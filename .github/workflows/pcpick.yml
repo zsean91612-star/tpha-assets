@@ -1,0 +1,34 @@
+name: pcpick
+on:
+  workflow_dispatch:
+    inputs:
+      fileid:
+        description: pCloud fileid
+        required: true
+permissions:
+  contents: write
+concurrency:
+  group: pcpick
+  cancel-in-progress: false
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: download from pCloud
+        env:
+          FID: ${{ github.event.inputs.fileid }}
+        run: |
+          case "$FID" in (*[!0-9]*) echo "bad fileid"; exit 1;; esac
+          mkdir -p immersive/pcpick
+          curl -sf "https://${{ secrets.PC_HOST }}/getthumb?auth=${{ secrets.PC_TOK }}&fileid=${FID}&size=2048x2048&crop=0&type=jpeg" -o "immersive/pcpick/${FID}.jpg"
+          head -c1 "immersive/pcpick/${FID}.jpg" | grep -qv '{' || { cat "immersive/pcpick/${FID}.jpg"; exit 1; }
+      - name: commit
+        run: |
+          git config user.name pcpick-bot
+          git config user.email pcpick@tpha.local
+          git add immersive/pcpick
+          git diff --cached --quiet && exit 0
+          git pull --rebase
+          git commit -m "pcpick: ${{ github.event.inputs.fileid }}"
+          git push
